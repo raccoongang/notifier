@@ -118,10 +118,10 @@ def _get_course_title(course_id):
     suitable for use as a course title in digest notifications.
 
     >>> _get_course_title("MITx/6.002x/2012_Fall")
-    '6.002x MITx'
+    'MITx-6.002x'
     """
     course_key = CourseKey.from_string(course_id)
-    return '{0.course} {0.org}'.format(course_key)
+    return '{0.org}-{0.course}'.format(course_key)
 
 
 def _get_course_url(course_id):
