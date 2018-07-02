@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 DIGEST_NOTIFICATION_PREFERENCE_KEY = 'notification_pref'
+BROAD_DIGEST_NOTIFICATION_PREFERENCE_KEY = 'broad_notification_pref'
 LANGUAGE_PREFERENCE_KEY = 'pref-lang'
 
 

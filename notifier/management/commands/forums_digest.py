@@ -15,10 +15,15 @@ import requests
 import sys
 
 from notifier.digest import render_digest, Digest, DigestCourse, DigestThread, DigestItem
-from notifier.pull import generate_digest_content
+from notifier.pull import generate_digest_content, generate_broad_digest_content
 from notifier.tasks import generate_and_send_digests
-from notifier.user import get_digest_subscribers, get_user
-
+from notifier.user import (
+    get_digest_subscribers,
+    get_user,
+    UserServiceException,
+    BROAD_DIGEST_NOTIFICATION_PREFERENCE_KEY,
+    DIGEST_NOTIFICATION_PREFERENCE_KEY
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,45 +79,70 @@ class Command(BaseCommand):
                     dest='show_html',
                     default=None,
                     help='output the rendered html body of the first user-digest generated, and exit (don\'t send anything)'),
+        make_option('--broad',
+                    action='store_true',
+                    dest='broad',
+                    default=None,
+                    help='send digest for subscribers with `broad mode` enabled'),
     )
 
-    def get_specific_users(self, user_ids):
+    def get_specific_users(self, user_ids, broad=None):
         # this makes an individual HTTP request for each user -
         # it is only intended for use with small numbers of users
         # (e.g. for diagnostic purposes).
         users = []
         for user_id in user_ids:
-            user = get_user(user_id)
-            if user:
-                users.append(user)
+            try:
+                user = get_user(user_id)
+                if user:
+                    if broad:
+                        user["preferences"][BROAD_DIGEST_NOTIFICATION_PREFERENCE_KEY]
+                    else:
+                        user["preferences"][DIGEST_NOTIFICATION_PREFERENCE_KEY]
+                    users.append(user)
+            except (UserServiceException, KeyError):
+                logger.warn('User with ID: {} has no digest subscriptions!'.format(user_id))
         return users
 
     def show_users(self, users):
         json.dump(list(users), self.stdout)
 
-    def show_content(self, users, from_dt, to_dt):
+    def show_content(self, users, from_dt, to_dt, broad=None):
         users_by_id = dict((str(u['id']), u) for u in users)
-        all_content = generate_digest_content(users_by_id, from_dt, to_dt)
+        if broad:
+            all_content = generate_broad_digest_content(users_by_id, from_dt, to_dt)
+        else:
+            all_content = generate_digest_content(users_by_id, from_dt, to_dt)
         # use django's encoder; builtin one doesn't handle datetime objects
         json.dump(list(all_content), self.stdout, cls=DigestJSONEncoder)
 
-    def show_rendered(self, fmt, users, from_dt, to_dt):
+    def show_rendered(self, fmt, users, from_dt, to_dt, broad=None):
         users_by_id = dict((str(u['id']), u) for u in users)
 
         def _fail(msg):
             logger.warning('could not show rendered %s: %s', fmt, msg)
 
         try:
-            user_id, digest = generate_digest_content(users_by_id, from_dt, to_dt).next()
+            if broad:
+                user_id, digest = generate_broad_digest_content(users_by_id, from_dt, to_dt).next()
+            else:
+                user_id, digest = generate_digest_content(users_by_id, from_dt, to_dt).next()
         except StopIteration:
             _fail('no digests found')
             return
 
+        digest_email_title = settings.FORUM_DIGEST_EMAIL_TITLE
+        digest_email_description = settings.FORUM_DIGEST_EMAIL_DESCRIPTION
+        if broad:
+            digest_email_title = settings.FORUM_BROAD_DIGEST_EMAIL_TITLE
+            digest_email_description = settings.FORUM_BROAD_DIGEST_EMAIL_DESCRIPTION
+
         text, html = render_digest(
             users_by_id[user_id],
             digest,
-            settings.FORUM_DIGEST_EMAIL_TITLE,
-            settings.FORUM_DIGEST_EMAIL_DESCRIPTION
+            digest_email_title,
+            digest_email_description,
+            broad=broad
         )
         if fmt == 'text':
             print >> self.stdout, text
@@ -127,7 +157,7 @@ class Command(BaseCommand):
         if options.get('users_str') is not None:
             # explicitly-specified users
             user_ids = [v.strip() for v in options['users_str'].split(',')]
-            users = self.get_specific_users(user_ids)
+            users = self.get_specific_users(user_ids, broad=options.get('broad'))
         else:
             # get all the users subscribed to notifications
             users = get_digest_subscribers()  # generator
@@ -146,15 +176,15 @@ class Command(BaseCommand):
             datetime.timedelta(minutes=options['minutes'])
 
         if options.get('show_content'):
-            self.show_content(users, from_datetime, to_datetime)
+            self.show_content(users, from_datetime, to_datetime, options.get('broad'))
             return
 
         if options.get('show_text'):
-            self.show_rendered('text', users, from_datetime, to_datetime)
+            self.show_rendered('text', users, from_datetime, to_datetime, options.get('broad'))
             return
 
         if options.get('show_html'):
-            self.show_rendered('html', users, from_datetime, to_datetime)
+            self.show_rendered('html', users, from_datetime, to_datetime, options.get('broad'))
             return
 
         # invoke `tasks.generate_and_send_digests` via celery, in groups of

@@ -37,6 +37,11 @@ FORUM_DIGEST_EMAIL_DESCRIPTION = os.getenv(
     'FORUM_DIGEST_EMAIL_DESCRIPTION',
     'A digest of unread content from course discussions you are following.'
 )
+FORUM_BROAD_DIGEST_EMAIL_TITLE = os.getenv('FORUM_BROAD_DIGEST_EMAIL_TITLE', 'BROAD VERSION: Discussion Digest')
+FORUM_BROAD_DIGEST_EMAIL_DESCRIPTION = os.getenv(
+    'FORUM_BROAD_DIGEST_EMAIL_DESCRIPTION',
+    'A BROAD digest of ALL unread content from course discussions you are enrolled.'
+)
 EMAIL_SENDER_POSTAL_ADDRESS = os.getenv('EMAIL_SENDER_POSTAL_ADDRESS')
 
 # Environment-specific settings

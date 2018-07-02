@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @celery.task(rate_limit=settings.FORUM_DIGEST_TASK_RATE_LIMIT, max_retries=settings.FORUM_DIGEST_TASK_MAX_RETRIES)
-def generate_and_send_digests(users, from_dt, to_dt):
+def generate_and_send_digests(users, from_dt, to_dt, broad=None):
     """
     This task generates and sends forum digest emails to multiple users in a
     single background operation.
@@ -33,6 +33,12 @@ def generate_and_send_digests(users, from_dt, to_dt):
     `from_dt` and `to_dt` are datetime objects representing the start and end
     of the time window for which to generate a digest.
     """
+    digest_email_title = settings.FORUM_DIGEST_EMAIL_TITLE
+    digest_email_description = settings.FORUM_DIGEST_EMAIL_DESCRIPTION
+    if broad:
+        digest_email_title = settings.FORUM_BROAD_DIGEST_EMAIL_TITLE
+        digest_email_description = settings.FORUM_BROAD_DIGEST_EMAIL_DESCRIPTION
+
     users_by_id = dict((str(u['id']), u) for u in users)
     msgs = []
     try:
@@ -41,7 +47,8 @@ def generate_and_send_digests(users, from_dt, to_dt):
                 user = users_by_id[user_id]
                 # format the digest
                 text, html = render_digest(
-                    user, digest, settings.FORUM_DIGEST_EMAIL_TITLE, settings.FORUM_DIGEST_EMAIL_DESCRIPTION)
+                    user, digest, digest_email_title, digest_email_description
+                )
                 # send the message through our mailer
                 msg = EmailMultiAlternatives(
                     settings.FORUM_DIGEST_EMAIL_SUBJECT,
