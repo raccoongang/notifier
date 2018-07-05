@@ -193,7 +193,9 @@ class Command(BaseCommand):
             generate_and_send_digests.delay(
                 some_users,
                 from_datetime,
-                to_datetime)
+                to_datetime,
+                broad=options.get('broad')
+            )
 
         user_batch = []
         for user in users:

@@ -15,7 +15,7 @@ from django.core.mail import EmailMultiAlternatives
 from notifier.connection_wrapper import get_connection
 from notifier.digest import render_digest
 from notifier.models import ForumDigestTask
-from notifier.pull import generate_digest_content, CommentsServiceException
+from notifier.pull import generate_digest_content, CommentsServiceException, generate_broad_digest_content
 from notifier.user import get_digest_subscribers, UserServiceException
 
 logger = logging.getLogger(__name__)
@@ -41,13 +41,14 @@ def generate_and_send_digests(users, from_dt, to_dt, broad=None):
 
     users_by_id = dict((str(u['id']), u) for u in users)
     msgs = []
+    digest_generator = generate_broad_digest_content if broad else generate_digest_content
     try:
         with closing(get_connection()) as cx:
-            for user_id, digest in generate_digest_content(users_by_id, from_dt, to_dt):
+            for user_id, digest in digest_generator(users_by_id, from_dt, to_dt):
                 user = users_by_id[user_id]
                 # format the digest
                 text, html = render_digest(
-                    user, digest, digest_email_title, digest_email_description
+                    user, digest, digest_email_title, digest_email_description, broad
                 )
                 # send the message through our mailer
                 msg = EmailMultiAlternatives(
