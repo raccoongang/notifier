@@ -122,11 +122,11 @@ def _time_slice(minutes, now=None):
     max_retries=settings.DAILY_TASK_MAX_RETRIES,
     default_retry_delay=settings.DAILY_TASK_RETRY_DELAY
 )
-def do_forums_digests(self):
+def do_forums_digests(self, broad=None):
 
     def batch_digest_subscribers():
         batch = []
-        for v in get_digest_subscribers():
+        for v in get_digest_subscribers(broad):
             batch.append(v)
             if len(batch)==settings.FORUM_DIGEST_TASK_BATCH_SIZE:
                 yield batch
@@ -140,6 +140,7 @@ def do_forums_digests(self):
     ForumDigestTask.prune_old_tasks(settings.FORUM_DIGEST_TASK_GC_DAYS)
 
     if self.request.retries == 0:
+        to_dt = to_dt + timedelta(seconds=1) if broad else to_dt
         task, created = ForumDigestTask.objects.get_or_create(
             from_dt=from_dt,
             to_dt=to_dt,
@@ -158,6 +159,6 @@ def do_forums_digests(self):
 
     try:
         for user_batch in batch_digest_subscribers():
-            generate_and_send_digests.delay(user_batch, from_dt, to_dt)
+            generate_and_send_digests.delay(user_batch, from_dt, to_dt, broad)
     except UserServiceException, e:
         raise do_forums_digests.retry(exc=e)
