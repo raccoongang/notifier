@@ -15,14 +15,14 @@ from django.core.mail import EmailMultiAlternatives
 from notifier.connection_wrapper import get_connection
 from notifier.digest import render_digest
 from notifier.models import ForumDigestTask
-from notifier.pull import generate_digest_content, CommentsServiceException
+from notifier.pull import generate_digest_content, CommentsServiceException, generate_broad_digest_content
 from notifier.user import get_digest_subscribers, UserServiceException
 
 logger = logging.getLogger(__name__)
 
 
 @celery.task(rate_limit=settings.FORUM_DIGEST_TASK_RATE_LIMIT, max_retries=settings.FORUM_DIGEST_TASK_MAX_RETRIES)
-def generate_and_send_digests(users, from_dt, to_dt):
+def generate_and_send_digests(users, from_dt, to_dt, broad=None):
     """
     This task generates and sends forum digest emails to multiple users in a
     single background operation.
@@ -33,15 +33,23 @@ def generate_and_send_digests(users, from_dt, to_dt):
     `from_dt` and `to_dt` are datetime objects representing the start and end
     of the time window for which to generate a digest.
     """
+    digest_email_title = settings.FORUM_DIGEST_EMAIL_TITLE
+    digest_email_description = settings.FORUM_DIGEST_EMAIL_DESCRIPTION
+    if broad:
+        digest_email_title = settings.FORUM_BROAD_DIGEST_EMAIL_TITLE
+        digest_email_description = settings.FORUM_BROAD_DIGEST_EMAIL_DESCRIPTION
+
     users_by_id = dict((str(u['id']), u) for u in users)
     msgs = []
+    digest_generator = generate_broad_digest_content if broad else generate_digest_content
     try:
         with closing(get_connection()) as cx:
-            for user_id, digest in generate_digest_content(users_by_id, from_dt, to_dt):
+            for user_id, digest in digest_generator(users_by_id, from_dt, to_dt):
                 user = users_by_id[user_id]
                 # format the digest
                 text, html = render_digest(
-                    user, digest, settings.FORUM_DIGEST_EMAIL_TITLE, settings.FORUM_DIGEST_EMAIL_DESCRIPTION)
+                    user, digest, digest_email_title, digest_email_description, broad
+                )
                 # send the message through our mailer
                 msg = EmailMultiAlternatives(
                     settings.FORUM_DIGEST_EMAIL_SUBJECT,
@@ -114,11 +122,11 @@ def _time_slice(minutes, now=None):
     max_retries=settings.DAILY_TASK_MAX_RETRIES,
     default_retry_delay=settings.DAILY_TASK_RETRY_DELAY
 )
-def do_forums_digests(self):
+def do_forums_digests(self, broad=None):
 
     def batch_digest_subscribers():
         batch = []
-        for v in get_digest_subscribers():
+        for v in get_digest_subscribers(broad):
             batch.append(v)
             if len(batch)==settings.FORUM_DIGEST_TASK_BATCH_SIZE:
                 yield batch
@@ -132,6 +140,7 @@ def do_forums_digests(self):
     ForumDigestTask.prune_old_tasks(settings.FORUM_DIGEST_TASK_GC_DAYS)
 
     if self.request.retries == 0:
+        to_dt = to_dt + timedelta(seconds=1) if broad else to_dt
         task, created = ForumDigestTask.objects.get_or_create(
             from_dt=from_dt,
             to_dt=to_dt,
@@ -150,6 +159,6 @@ def do_forums_digests(self):
 
     try:
         for user_batch in batch_digest_subscribers():
-            generate_and_send_digests.delay(user_batch, from_dt, to_dt)
+            generate_and_send_digests.delay(user_batch, from_dt, to_dt, broad)
     except UserServiceException, e:
         raise do_forums_digests.retry(exc=e)

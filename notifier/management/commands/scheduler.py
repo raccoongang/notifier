@@ -10,6 +10,7 @@ sched = BlockingScheduler(standalone=True)
 
 def digest_job():
     do_forums_digests.delay()
+    do_forums_digests.delay(broad=True)
 
 class Command(BaseCommand):
 

@@ -14,7 +14,12 @@ from django.utils.translation import ugettext as _, activate, deactivate
 from statsd import statsd
 from opaque_keys.edx.keys import CourseKey
 
-from notifier.user import DIGEST_NOTIFICATION_PREFERENCE_KEY, LANGUAGE_PREFERENCE_KEY
+from notifier.user import (
+    DIGEST_NOTIFICATION_PREFERENCE_KEY,
+    BROAD_DIGEST_NOTIFICATION_PREFERENCE_KEY,
+    LANGUAGE_PREFERENCE_KEY
+)
+
 
 # maximum number of threads to display per course
 MAX_COURSE_THREADS = 30
@@ -148,15 +153,26 @@ def _get_thread_url(course_id, thread_id, commentable_id):
     return _get_course_url(course_id) + thread_path
 
 
-def _get_unsubscribe_url(user):
+def _get_unsubscribe_url(user, broad=None):
     """
     Formatting helper.
 
     Generate a click-through url to unsubscribe a user from digest notifications,
     using the encrypted token contained in the user's preference.
     """
-    token = user["preferences"][DIGEST_NOTIFICATION_PREFERENCE_KEY]
-    return '{}/notification_prefs/unsubscribe/{}/'.format(settings.LMS_URL_BASE, token)
+    unsubscribe_url = '{}/notification_prefs/unsubscribe/{}/'
+    preference_key = DIGEST_NOTIFICATION_PREFERENCE_KEY
+    if broad:
+        unsubscribe_url = '{}/notification_prefs/unsubscribe/{}/?broad=1'
+        preference_key = BROAD_DIGEST_NOTIFICATION_PREFERENCE_KEY
+
+    token = user["preferences"].get(preference_key)
+    if not token:
+        logger.error(
+            'User {}:{} got broken `unsubscribe_url` in email digest!'.format(user['name'], user['id'])
+        )
+
+    return unsubscribe_url.format(settings.LMS_URL_BASE, token)
 
 
 @contextmanager
@@ -210,7 +226,7 @@ class DigestItem(object):
 
 
 @statsd.timed('notifier.digest_render.elapsed')
-def render_digest(user, digest, title, description):
+def render_digest(user, digest, title, description, broad=None):
     """
     Generate HTML and plaintext renderings of digest material, suitable for
     emailing.
@@ -223,6 +239,8 @@ def render_digest(user, digest, title, description):
 
     `title` and `description` are brief strings to be displayed at the top
     of the email message.
+
+    `broad` a flag of `broad mode`.
 
 
     Returns two strings: (text_body, html_body).
@@ -237,7 +255,7 @@ def render_digest(user, digest, title, description):
         'course_names': _make_text_list([course.title for course in digest.courses]),
         'thread_count': sum(course.thread_count for course in digest.courses),
         'logo_image_url': settings.LOGO_IMAGE_URL,
-        'unsubscribe_url': _get_unsubscribe_url(user),
+        'unsubscribe_url': _get_unsubscribe_url(user, broad),
         'postal_address': settings.EMAIL_SENDER_POSTAL_ADDRESS,
         })
 

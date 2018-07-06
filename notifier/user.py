@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 DIGEST_NOTIFICATION_PREFERENCE_KEY = 'notification_pref'
+BROAD_DIGEST_NOTIFICATION_PREFERENCE_KEY = 'broad_notification_pref'
 LANGUAGE_PREFERENCE_KEY = 'pref-lang'
 
 
@@ -42,14 +43,16 @@ def _http_get(*a, **kw):
         )
     return response
 
-def get_digest_subscribers():
+
+def get_digest_subscribers(broad=None):
     """
     Generator function that calls the edX user API and yields a dict for each
     user opted in for digest notifications.
 
     The returned dicts will have keys "id", "name", and "email" (all strings).
     """
-    api_url = settings.US_URL_BASE + '/notifier_api/v1/users/'
+    q_filter = 'broad' if broad else 'standard'
+    api_url = settings.US_URL_BASE + '/notifier_api/v1/users/?filter={}'.format(q_filter)
     params = {
         'page_size': settings.US_RESULT_PAGE_SIZE,
         'page': 1
