@@ -185,9 +185,11 @@ def generate_broad_digest_content(users_by_id, from_dt, to_dt):
 
     users_with_courses_list = []
     for user_id, user_info in sorted(users_by_id.iteritems()):
-        # gather string: `user_id::course1_id,course2_id`
-        user_with_courses = '{}::{}'.format(user_id, ','.join(user_info.get(u'course_info').keys()))
-        users_with_courses_list.append(user_with_courses)
+        course_ids_list = user_info.get(u'course_info').keys()
+        if course_ids_list:
+            # NOTE: (wowkalucky) gather string: `user_id::course1_id,course2_id`
+            user_with_courses = '{}::{}'.format(user_id, ','.join(course_ids_list))
+            users_with_courses_list.append(user_with_courses)
 
     data = {'users_with_courses': ':::'.join(users_with_courses_list)}
 
