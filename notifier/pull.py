@@ -45,6 +45,7 @@ def process_cs_response(payload, user_info_by_id):
         if not digest.empty:
             yield user_id, digest
 
+
 def _build_digest(user_content, user_info):
     """
     Transforms course/thread/item data from the comments service's response
@@ -68,6 +69,7 @@ def _build_digest(user_content, user_info):
         )
     )
 
+
 def _should_skip_org(course_id):
     # TODO: Need to implement an end point in LMS to get this list.
     orgs_to_skip = ["WhartonOnlineProfessionalEd"]
@@ -76,6 +78,7 @@ def _should_skip_org(course_id):
         if org in course_id:
             skip_course = True
     return skip_course
+
 
 def _build_digest_course(course_id, course_content, user_course_info):
     """
@@ -105,6 +108,7 @@ def _build_digest_course(course_id, course_content, user_course_info):
             ]
         )
 
+
 def _build_digest_thread(thread_id, course_id, thread_content):
     """
     Parses a thread information for the given course and thread.
@@ -116,6 +120,7 @@ def _build_digest_thread(thread_id, course_id, thread_content):
         thread_content["title"],
         [_build_digest_item(item_dict) for item_dict in thread_content["content"]]
     )
+
 
 def _build_digest_item(item_dict):
     """
@@ -162,6 +167,50 @@ def generate_digest_content(users_by_id, from_dt, to_dt):
     }
 
     logger.info('calling comments service to pull digests for %d user(s)', len(users_by_id))
+    resp = _http_post(api_url, headers=headers, data=data)
+
+    return process_cs_response(resp.json(), users_by_id)
+
+
+def generate_broad_digest_content(users_by_id, from_dt, to_dt):
+    """
+    Function that calls the edX comments service API and yields a
+    tuple of (user_id, digest) for each specified user that has `broad mode`
+    enabled and has discussion updates between the specified points in time.
+    `users_by_id` should be a dict of {user_id: user} where user-id is an edX
+    user id and user is the user dict returned by edx notifier_api.
+    `from_dt` and `to_dt` should be datetime.datetime objects representing
+    the desired time window.
+    In each yielded tuple, the `user_id` part will contain one of the values
+    passed in `user_ids` and the `digest` part will contain a Digest object
+    (see notifier.digest.Digest for structure details).
+    The order in which user-digest results will be yielded is undefined, and
+    if no updates are found for any user_id in the given time period, no
+    user-digest tuple will be yielded for them (therefore, depending on the
+    parameters passed, this function may not yield anything).
+    """
+    # set up and execute the API call
+    api_url = settings.CS_URL_BASE + '/api/v1/broad/notifications'
+
+    users_with_courses_list = []
+    for user_id, user_info in sorted(users_by_id.iteritems()):
+        course_ids_list = user_info.get(u'course_info').keys()
+        if course_ids_list:
+            # NOTE: (wowkalucky) gather string: `user_id::course1_id,course2_id`
+            user_with_courses = '{}::{}'.format(user_id, ','.join(course_ids_list))
+            users_with_courses_list.append(user_with_courses)
+
+    data = {'users_with_courses': ':::'.join(users_with_courses_list)}
+
+    headers = {
+        'X-Edx-Api-Key': settings.CS_API_KEY,
+    }
+
+    dt_format = '%Y-%m-%d %H:%M:%S%z'
+    data['from'] = from_dt.strftime(dt_format)
+    data['to'] = to_dt.strftime(dt_format)
+
+    logger.info('calling comments service to pull digests for %d user(s)', len(users_with_courses_list))
     resp = _http_post(api_url, headers=headers, data=data)
 
     return process_cs_response(resp.json(), users_by_id)
