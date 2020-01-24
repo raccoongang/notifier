@@ -52,7 +52,7 @@ def generate_and_send_digests(users, from_dt, to_dt, language=None, broad=None):
                 user = users_by_id[user_id]
                 # format the digest
                 text, html = render_digest(
-                    user, digest, user, digest, digest_email_title, digest_email_description, broad
+                    user, digest, digest_email_title, digest_email_description, broad
                 )
                 # send the message through our mailer
                 msg = EmailMultiAlternatives(
